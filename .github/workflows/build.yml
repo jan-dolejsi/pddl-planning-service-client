@@ -38,13 +38,13 @@ jobs:
     if: success() && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v2
-      - name: Use Node.js 10.x
+      - name: Use Node.js 12.x
         uses: actions/setup-node@v1
         with:
-          node-version: 8.x
+          node-version: 12.x
           registry-url: https://registry.npmjs.org/
       - run: npm install
       - run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{secrets.NPM_TOKEN}}
-        continue-on-error: true
+        continue-on-error: false
