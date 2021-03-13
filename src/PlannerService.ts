@@ -11,8 +11,8 @@ import { planner, Plan, ProblemInfo, DomainInfo, parser, PlanStep } from 'pddl-w
 /** Abstract implementation of both sync/async planning service client. */
 export abstract class PlannerService extends planner.Planner {
 
-    constructor(plannerUrl: string, plannerConfiguration: planner.PlannerRunConfiguration) {
-        super(plannerUrl, plannerConfiguration);
+    constructor(plannerUrl: string, plannerConfiguration: planner.PlannerRunConfiguration, providerConfiguration: planner.ProviderConfiguration) {
+        super(plannerUrl, plannerConfiguration, providerConfiguration);
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -103,4 +103,27 @@ export abstract class PlannerService extends planner.Planner {
         }
         planParser.onPlanFinished();
     }
+}
+
+export interface HttpConnectionError {
+    message: string;
+    /** Host name or IP address e.g. 127.0.0.1 */
+    address: string;
+    code: string;
+    errno: string;
+    port: number;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+export interface HttpConnectionRefusedError extends HttpConnectionError {
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function instanceOfHttpConnectionError(object: any): object is HttpConnectionError {
+    return  'address' in object && 'port' in object && 'code' in object && 'message' in object;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function instanceOfHttpConnectionRefusedError(object: any): object is HttpConnectionRefusedError {
+    return (instanceOfHttpConnectionError(object)) && (object as HttpConnectionError).code === 'ECONNREFUSED';
 }

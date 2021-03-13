@@ -15,8 +15,8 @@ export class PlannerAsyncService extends PlannerService {
     private asyncMode = false;
     private planTimeScale = 1;
 
-    constructor(plannerUrl: string, private asyncPlannerConfiguration: AsyncServiceConfiguration) {
-        super(plannerUrl, asyncPlannerConfiguration);
+    constructor(plannerUrl: string, private asyncPlannerConfiguration: AsyncServiceConfiguration, providerConfiguration: planner.ProviderConfiguration) {
+        super(plannerUrl, asyncPlannerConfiguration, providerConfiguration);
     }
 
     getTimeout(): number {

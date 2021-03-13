@@ -10,8 +10,8 @@ import { PlannerService } from './PlannerService';
 /** Wraps the `/solve` planning web service interface. */
 export class PlannerSyncService extends PlannerService {
 
-    constructor(plannerUrl: string, plannerConfiguration: planner.PlannerRunConfiguration) {
-        super(plannerUrl, plannerConfiguration);
+    constructor(plannerUrl: string, plannerConfiguration: planner.PlannerRunConfiguration, providerConfiguration: planner.ProviderConfiguration) {
+        super(plannerUrl, plannerConfiguration, providerConfiguration);
     }
 
     createUrl(): string {
