@@ -39,7 +39,7 @@ export class PlannerAsyncService extends PlannerService {
 
         this.planTimeScale = PlannerAsyncService.getPlanTimeScale(configuration);
 
-        return {
+        let body = {
             'domain': {
                 'name': domainFileInfo.name,
                 'format': 'PDDL',
@@ -52,6 +52,28 @@ export class PlannerAsyncService extends PlannerService {
             },
             'configuration': configuration
         };
+
+        if (this.asyncPlannerConfiguration.searchDebuggerEnabled) {
+            if (this.providerConfiguration.configuration.searchDebuggerSupport === planner.SearchDebuggerSupportType.HttpCallback) {
+                if (!this.plannerPath.match(/http:\/\/(localhost|127\.0\.0\.1)[:\/]/)) {
+                    throw new Error(`Search debugger HTTP Callback is only supported for servers running on localhost.`);
+                }
+                if (this.asyncPlannerConfiguration.searchDebuggerPort) {
+                    body = Object.assign(body,
+                        {
+                            'callbacks': [
+                                {
+                                    'type': 'STATES',
+                                    'url': 'http://localhost:' + this.asyncPlannerConfiguration.searchDebuggerPort,
+                                }],
+                        });
+                } else {
+                    throw new Error(`Search debugger port not provided.`);
+                }
+            }
+        }
+
+        return body;
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -78,7 +100,7 @@ export class PlannerAsyncService extends PlannerService {
     async processServerResponseBody(responseBody: any, planParser: parser.PddlPlannerOutputParser,
         callbacks: planner.PlannerResponseHandler,
         resolve: (plans: Plan[]) => void, reject: (error: Error) => void): Promise<void> {
-        
+
         let _timedOut = false;
         const responseStatus: string = responseBody['status']['status'];
         if (["STOPPED", "SEARCHING_BETTER_PLAN"].includes(responseStatus)) {
@@ -90,8 +112,8 @@ export class PlannerAsyncService extends PlannerService {
                     const parserPromises = plansJson.map((plan: any) => this.parsePlan(plan, planParser));
                     await Promise.all(parserPromises);
                 }
-                catch (err) {
-                    reject(err);
+                catch (err: unknown) {
+                    reject(err as Error);
                 }
 
                 const plans = planParser.getPlans();
@@ -164,10 +186,10 @@ export class PlannerAsyncService extends PlannerService {
     }
 }
 
-export interface AsyncServiceOnlyConfiguration  {
+export interface AsyncServiceOnlyConfiguration {
     planFormat: string;
     timeout?: number;
 }
 
-export interface AsyncServiceConfiguration extends planner.PlannerRunConfiguration, AsyncServiceOnlyConfiguration  {
+export interface AsyncServiceConfiguration extends planner.PlannerRunConfiguration, AsyncServiceOnlyConfiguration {
 }
