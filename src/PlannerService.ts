@@ -35,10 +35,8 @@ export abstract class PlannerService extends planner.Planner {
             };
         }
 
-        if (parent.providePlannerOptions({ domain: domainFileInfo, problem: problemFileInfo }).some(op => op.length)) {
-            // todo: promote this to the planner factory
-            console.warn("Search Debugger is not supported by planning services. Only planner executable may support it.");
-        }
+        // currently, this is used to notify any observers that planning is starting
+        parent.providePlannerOptions({ domain: domainFileInfo, problem: problemFileInfo });
 
         const requestBody = await this.createRequestBody(domainFileInfo, problemFileInfo);
         if (!requestBody) { return []; }
