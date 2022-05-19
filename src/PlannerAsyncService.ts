@@ -7,6 +7,9 @@
 import { Plan, ProblemInfo, DomainInfo, parser, planner } from 'pddl-workspace';
 import { PlannerService } from './PlannerService';
 
+const HOUR = "HOUR";
+const DEFAULT_PLAN_TIME_UNIT_HOUR = HOUR;
+
 /** Wraps the `/request` planning web service interface. */
 export class PlannerAsyncService extends PlannerService {
 
@@ -14,6 +17,7 @@ export class PlannerAsyncService extends PlannerService {
     private timeout = PlannerAsyncService.DEFAULT_TIMEOUT; //this default is overridden by info from the configuration!
     private asyncMode = false;
     private planTimeScale = 1;
+    private lastPlanPrinted = -1;
 
     constructor(plannerUrl: string, private asyncPlannerConfiguration: AsyncServiceConfiguration, providerConfiguration: planner.ProviderConfiguration) {
         super(plannerUrl, asyncPlannerConfiguration, providerConfiguration);
@@ -33,11 +37,11 @@ export class PlannerAsyncService extends PlannerService {
         if (!configuration) { return null; }
 
         configuration.planFormat = configuration.planFormat ?? 'JSON';
-        if (("timeout" in configuration) && configuration.timeout !== undefined) {
+        if (configuration.timeout !== undefined) {
             this.timeout = configuration.timeout;
         }
 
-        this.planTimeScale = PlannerAsyncService.getPlanTimeScale(configuration);
+        this.planTimeScale = PlannerAsyncService.toPlanTimeScale(configuration.planTimeUnit ?? DEFAULT_PLAN_TIME_UNIT_HOUR);
 
         let body = {
             'domain': {
@@ -76,15 +80,13 @@ export class PlannerAsyncService extends PlannerService {
         return body;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    static getPlanTimeScale(configuration: any): number {
-        const planTimeUnit = configuration['planTimeUnit'];
+    static toPlanTimeScale(planTimeUnit: string): number {
         switch (planTimeUnit) {
             case "MINUTE":
                 return 60;
             case "MILLISECOND":
                 return 1 / 1000;
-            case "HOUR":
+            case HOUR:
                 return 60 * 60;
             case "DAY":
                 return 24 * 60 * 60;
@@ -117,10 +119,11 @@ export class PlannerAsyncService extends PlannerService {
                 }
 
                 const plans = planParser.getPlans();
-                if (plans.length > 0) {
-                    callbacks.handleOutput(plans[0].getText() + '\n');
+                for (let index = this.lastPlanPrinted+1; index < plans.length; index++) {
+                    callbacks.handlePlan(plans[index]);
+                    this.lastPlanPrinted = index;
                 }
-                else {
+                if (plans.length === 0) {
                     callbacks.handleOutput('No plan found.');
                 }
 
@@ -155,8 +158,11 @@ export class PlannerAsyncService extends PlannerService {
         const searchPerformanceInfo = plan['searchPerformanceInfo'];
         const statesEvaluated: number = searchPerformanceInfo['statesEvaluated'];
         const elapsedTimeInSeconds = parseFloat(searchPerformanceInfo['timeElapsed']) / 1000;
+        const planTimeUnit = plan['timeUnit'];
+        planTimeUnit && console.log("Plan time unit: " + planTimeUnit);
+        const planTimeScale = (planTimeUnit && PlannerAsyncService.toPlanTimeScale(planTimeUnit)) ?? this.planTimeScale;
 
-        planParser.setPlanMetaData(makespan, metric, statesEvaluated, elapsedTimeInSeconds, this.planTimeScale);
+        planParser.setPlanMetaData(makespan, metric, statesEvaluated, elapsedTimeInSeconds, planTimeScale);
 
         const planFormat: string | undefined = plan['format'];
         if (planFormat?.toLowerCase() === 'json') {
@@ -188,6 +194,7 @@ export class PlannerAsyncService extends PlannerService {
 
 export interface AsyncServiceOnlyConfiguration {
     planFormat: string;
+    planTimeUnit?: string;
     timeout?: number;
 }
 

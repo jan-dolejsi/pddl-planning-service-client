@@ -74,8 +74,12 @@ export class PlannerSyncService extends PlannerService {
         this.parsePlanSteps(result['plan'], planParser);
 
         const plans = planParser.getPlans();
-        if (plans.length > 0) { callbacks.handleOutput(plans[0].getText() + '\n'); }
-        else { callbacks.handleOutput('No plan found.'); }
+        if (plans.length > 0) {
+            callbacks.handlePlan(plans[0]);
+        }
+        else {
+            callbacks.handleOutput('No plan found.');
+        }
 
         resolve(plans);
     }
