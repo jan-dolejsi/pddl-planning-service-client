@@ -36,8 +36,8 @@ export class PlannerSyncService extends PlannerService<SyncServerRequest, SyncSe
         return Promise.resolve(body);
     }
 
-    async processServerResponseBody(_origUrl: string, responseBody: SyncServerResponse, planParser: parser.PddlPlannerOutputParser, callbacks: planner.PlannerResponseHandler,
-        resolve: (plans: Plan[]) => void, reject: (error: Error) => void): Promise<void> {
+    async processServerResponseBody(_origUrl: string, responseBody: SyncServerResponse, planParser: parser.PddlPlannerOutputParser,
+        callbacks: planner.PlannerResponseHandler): Promise<Plan[]> {
 
         const status = responseBody.status;
         const result = responseBody.result;
@@ -60,17 +60,12 @@ export class PlannerSyncService extends PlannerService<SyncServerRequest, SyncSe
                 const resultError = res.error;
                 if (resultError) {
                     callbacks.handleOutput(resultError);
-                    resolve([]);
                 }
+                return [];
             }
             else {
-                reject(new Error("An error occurred while solving the planning problem: " + JSON.stringify(result)));
+                throw new Error("An error occurred while solving the planning problem: " + JSON.stringify(result));
             }
-            return;
-        }
-        else if (status !== "ok") {
-            reject(new Error(`Planner service failed with status ${status}.`));
-            return;
         }
         else if (status === "ok" && result) {
             const res = result as SyncServerResponseResult
@@ -81,7 +76,7 @@ export class PlannerSyncService extends PlannerService<SyncServerRequest, SyncSe
             }
 
             if (res.plan) {
-                this.parsePlanSteps(res.plan, planParser);
+                this.convertPlanSteps(res.plan, planParser);
             }
 
             const plans = planParser.getPlans();
@@ -92,7 +87,9 @@ export class PlannerSyncService extends PlannerService<SyncServerRequest, SyncSe
                 callbacks.handleOutput('No plan found.\n');
             }
 
-            resolve(plans);
+            return plans;
+        } else {
+            throw new Error(`Planner service failed with status ${status}.`);
         }
     }
 }

@@ -98,22 +98,18 @@ export class PlannerAsyncService extends PlannerService<AsyncServerRequest, Asyn
     }
 
     async processServerResponseBody(_origUrl: string, responseBody: AsyncServerResponse, planParser: parser.PddlPlannerOutputParser,
-        callbacks: planner.PlannerResponseHandler,
-        resolve: (plans: Plan[]) => void, reject: (error: Error) => void): Promise<void> {
+        callbacks: planner.PlannerResponseHandler): Promise<Plan[]> {
 
-        let _timedOut = false;
         const responseStatus = responseBody.status.status;
         if (["STOPPED", "SEARCHING_BETTER_PLAN"].includes(responseStatus)) {
-            _timedOut = responseBody.status.reason === "TIMEOUT";
+            if (responseBody.status.reason === "TIMEOUT") {
+                console.log(`Planning request timed out.`);
+            }
             if (responseBody.plans.length > 0) {
                 const plansJson = responseBody.plans;
-                try {
-                    const parserPromises = plansJson.map(plan => this.parsePlan(plan, planParser));
-                    await Promise.all(parserPromises);
-                }
-                catch (err: unknown) {
-                    reject(err as Error);
-                }
+
+                const parserPromises = plansJson.map(plan => this.parsePlan(plan, planParser));
+                await Promise.all(parserPromises);
 
                 const plans = planParser.getPlans();
                 for (let index = this.lastPlanPrinted + 1; index < plans.length; index++) {
@@ -124,28 +120,23 @@ export class PlannerAsyncService extends PlannerService<AsyncServerRequest, Asyn
                     callbacks.handleOutput('No plan found.');
                 }
 
-                resolve(plans);
-                return;
+                return plans;
             }
             else {
                 // todo: no plan found yet. Poll again later.
-                resolve([]);
-                return;
+                return [];
             }
         }
         else if (responseStatus === "FAILED") {
             const error = responseBody.status.error.message;
-            reject(new Error(error));
-            return;
+            throw new Error(error);
         }
         else if (["NOT_INITIALIZED", "INITIATING", "SEARCHING_INITIAL_PLAN"].includes(responseStatus)) {
-            _timedOut = true;
             const error = `After timeout ${this.timeout} the status is ${responseStatus}`;
-            reject(new Error(error));
-            return;
+            throw new Error(error);
+        } else {
+            throw new Error(`Planner service returned unexpected status: ${responseStatus}.`);
         }
-
-        console.log(_timedOut);
     }
 
     async parsePlan(plan: AsyncResponsePlan, planParser: parser.PddlPlannerOutputParser): Promise<void> {
@@ -163,7 +154,7 @@ export class PlannerAsyncService extends PlannerService<AsyncServerRequest, Asyn
         const planFormat = plan.format;
         if (planFormat?.toLowerCase() === 'json') {
             const planSteps = JSON.parse(plan.content);
-            this.parsePlanSteps(planSteps, planParser);
+            this.convertPlanSteps(planSteps, planParser);
             planParser.onPlanFinished();
         }
         else if (planFormat?.toLowerCase() === 'tasks') {

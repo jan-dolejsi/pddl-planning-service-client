@@ -4,8 +4,10 @@
  * ------------------------------------------------------------------------------------------ */
 'use strict';
 
-import * as request from 'request';
 import { planner, Plan, ProblemInfo, DomainInfo, parser, PlanStep } from 'pddl-workspace';
+import { postJson } from './httpUtils';
+import { URL } from 'url';
+import { OutgoingHttpHeaders } from 'http';
 
 
 /** Abstract implementation of both sync/async planning service client. */
@@ -19,14 +21,14 @@ export abstract class PlannerService<I extends ServerRequest, O extends ServerRe
 
     abstract createUrl(): string;
 
-    abstract processServerResponseBody(origUrl: string, responseBody: O, planParser: parser.PddlPlannerOutputParser, parent: planner.PlannerResponseHandler,
-        resolve: (plans: Plan[]) => void, reject: (error: Error) => void): Promise<void>;
+    abstract processServerResponseBody(origUrl: string, responseBody: O, planParser: parser.PddlPlannerOutputParser,
+        parent: planner.PlannerResponseHandler): Promise<Plan[]>;
 
     async plan(domainFileInfo: DomainInfo, problemFileInfo: ProblemInfo, planParser: parser.PddlPlannerOutputParser, parent: planner.PlannerResponseHandler): Promise<Plan[]> {
         parent.handleOutput(`Planning service: ${this.plannerPath}\nDomain: ${domainFileInfo.name}, Problem: ${problemFileInfo.name}\n`);
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let requestHeader: any = {};
+        let requestHeader: OutgoingHttpHeaders = {};
         if (this.plannerConfiguration.authentication?.getToken() !== undefined) {
             requestHeader = {
                 "Authorization": "Bearer " + this.plannerConfiguration.authentication.getToken()
@@ -42,56 +44,28 @@ export abstract class PlannerService<I extends ServerRequest, O extends ServerRe
 
         const timeoutInSec = this.getTimeout();
 
-        // eslint-disable-next-line @typescript-eslint/no-this-alias
-        const that = this;
-        return new Promise<Plan[]>(function (resolve, reject) {
-
-            request.post({ url: url, headers: requestHeader, body: requestBody, json: true, timeout: timeoutInSec * 1000 * 1.1 }, async (err, httpResponse, responseBody) => {
-
-                if (err !== null) {
-                    reject(err);
-                    return;
-                }
-
-                if (that.plannerConfiguration.authentication) {
-                    if (httpResponse) {
-                        if (httpResponse.statusCode === 400) {
-                            const message = "Authentication failed. Please login or update tokens.";
-                            const error = new Error(message);
-                            reject(error);
-                            return;
-                        }
-                        else if (httpResponse.statusCode === 401) {
-                            const message = "Invalid token. Please update tokens.";
-                            const error = new Error(message);
-                            reject(error);
-                            return;
-                        }
-                    }
-                }
-
-                if (httpResponse && httpResponse.statusCode > 202) {
-                    const notificationMessage = `PDDL Planning Service returned code ${httpResponse.statusCode} ${httpResponse.statusMessage}`;
-                    const error = new Error(notificationMessage);
-                    reject(error);
-                    return;
-                }
-
-                await that.processServerResponseBody(url, responseBody, planParser, parent, resolve, reject);
-            });
+        const output = await postJson<O>(new URL(url), requestBody as never, {
+            isAuthenticated: this.plannerConfiguration.authentication !== undefined,
+            serviceFriendlyName: 'PDDL Planning Service',
+            headers: requestHeader,
+            json: true,
+            timeout: timeoutInSec * 1000 * 1.1,
         });
+
+        const plans = await this.processServerResponseBody(url, output, planParser, parent);
+
+        return plans;
     }
 
     /** Gets timeout in seconds. */
     abstract getTimeout(): number;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    parsePlanSteps(planSteps: any, planParser: parser.PddlPlannerOutputParser): void {
+    convertPlanSteps(planSteps: JsonPlanStep[], planParser: parser.PddlPlannerOutputParser): void {
         for (let index = 0; index < planSteps.length; index++) {
             const planStep = planSteps[index];
-            const fullActionName = (planStep["name"] as string).replace('(', '').replace(')', '');
-            const time = planStep["time"] ?? (index + 1) * planParser.options.epsilon;
-            let duration = planStep["duration"];
+            const fullActionName = planStep.name.replace('(', '').replace(')', '');
+            const time = planStep.time ?? (index + 1) * planParser.options.epsilon;
+            let duration = planStep.duration;
             const isDurative = duration !== undefined && duration !== null;
             duration = duration ?? planParser.options.epsilon;
             const planStepObj = new PlanStep(time, fullActionName, isDurative, duration, index);
@@ -116,7 +90,7 @@ export interface HttpConnectionRefusedError extends HttpConnectionError {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function instanceOfHttpConnectionError(object: any): object is HttpConnectionError {
-    return  'address' in object && 'port' in object && 'code' in object && 'message' in object;
+    return 'address' in object && 'port' in object && 'code' in object && 'message' in object;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -132,4 +106,11 @@ export interface ServerRequest {
 /** Server response body. */
 export interface ServerResponse {
 
+}
+
+interface JsonPlanStep {
+    /** Action name. */
+    name: string;
+    time?: number;
+    duration?: number;
 }
