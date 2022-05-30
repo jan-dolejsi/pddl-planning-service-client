@@ -5,13 +5,13 @@
 'use strict';
 
 import { Plan, ProblemInfo, DomainInfo, parser, planner } from 'pddl-workspace';
-import { PlannerService } from './PlannerService';
+import { PlannerService, ServerRequest, ServerResponse } from './PlannerService';
 
 const HOUR = "HOUR";
 const DEFAULT_PLAN_TIME_UNIT_HOUR = HOUR;
 
 /** Wraps the `/request` planning web service interface. */
-export class PlannerAsyncService extends PlannerService {
+export class PlannerAsyncService extends PlannerService<AsyncServerRequest, AsyncServerResponse> {
 
     public static readonly DEFAULT_TIMEOUT = 60;
     private timeout = PlannerAsyncService.DEFAULT_TIMEOUT; //this default is overridden by info from the configuration!
@@ -31,8 +31,7 @@ export class PlannerAsyncService extends PlannerService {
         return this.plannerPath + '?async=' + this.asyncMode;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async createRequestBody(domainFileInfo: DomainInfo, problemFileInfo: ProblemInfo): Promise<any> {
+    async createRequestBody(domainFileInfo: DomainInfo, problemFileInfo: ProblemInfo): Promise<AsyncServerRequest | null> {
         const configuration = this.asyncPlannerConfiguration;
         if (!configuration) { return null; }
 
@@ -43,18 +42,18 @@ export class PlannerAsyncService extends PlannerService {
 
         this.planTimeScale = PlannerAsyncService.toPlanTimeScale(configuration.planTimeUnit ?? DEFAULT_PLAN_TIME_UNIT_HOUR);
 
-        let body = {
-            'domain': {
-                'name': domainFileInfo.name,
-                'format': 'PDDL',
-                'content': domainFileInfo.getText()
+        let body: AsyncServerRequest = {
+            domain: {
+                name: domainFileInfo.name,
+                format: 'PDDL',
+                content: domainFileInfo.getText()
             },
-            'problem': {
-                'name': problemFileInfo.name,
-                'format': 'PDDL',
-                'content': problemFileInfo.getText()
+            problem: {
+                name: problemFileInfo.name,
+                format: 'PDDL',
+                content: problemFileInfo.getText()
             },
-            'configuration': configuration
+            configuration: configuration
         };
 
         if (this.asyncPlannerConfiguration.searchDebuggerEnabled) {
@@ -80,7 +79,7 @@ export class PlannerAsyncService extends PlannerService {
         return body;
     }
 
-    static toPlanTimeScale(planTimeUnit: string): number {
+    static toPlanTimeScale(planTimeUnit: PlanTimeUnit): number {
         switch (planTimeUnit) {
             case "MINUTE":
                 return 60;
@@ -98,20 +97,18 @@ export class PlannerAsyncService extends PlannerService {
         }
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async processServerResponseBody(responseBody: any, planParser: parser.PddlPlannerOutputParser,
+    async processServerResponseBody(_origUrl: string, responseBody: AsyncServerResponse, planParser: parser.PddlPlannerOutputParser,
         callbacks: planner.PlannerResponseHandler,
         resolve: (plans: Plan[]) => void, reject: (error: Error) => void): Promise<void> {
 
         let _timedOut = false;
-        const responseStatus: string = responseBody['status']['status'];
+        const responseStatus = responseBody.status.status;
         if (["STOPPED", "SEARCHING_BETTER_PLAN"].includes(responseStatus)) {
-            _timedOut = responseBody['status']['reason'] === "TIMEOUT";
-            if (responseBody['plans'].length > 0) {
-                const plansJson = responseBody['plans'];
+            _timedOut = responseBody.status.reason === "TIMEOUT";
+            if (responseBody.plans.length > 0) {
+                const plansJson = responseBody.plans;
                 try {
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    const parserPromises = plansJson.map((plan: any) => this.parsePlan(plan, planParser));
+                    const parserPromises = plansJson.map(plan => this.parsePlan(plan, planParser));
                     await Promise.all(parserPromises);
                 }
                 catch (err: unknown) {
@@ -119,7 +116,7 @@ export class PlannerAsyncService extends PlannerService {
                 }
 
                 const plans = planParser.getPlans();
-                for (let index = this.lastPlanPrinted+1; index < plans.length; index++) {
+                for (let index = this.lastPlanPrinted + 1; index < plans.length; index++) {
                     callbacks.handlePlan(plans[index]);
                     this.lastPlanPrinted = index;
                 }
@@ -137,7 +134,7 @@ export class PlannerAsyncService extends PlannerService {
             }
         }
         else if (responseStatus === "FAILED") {
-            const error = responseBody['status']['error']['message'];
+            const error = responseBody.status.error.message;
             reject(new Error(error));
             return;
         }
@@ -151,32 +148,31 @@ export class PlannerAsyncService extends PlannerService {
         console.log(_timedOut);
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async parsePlan(plan: any, planParser: parser.PddlPlannerOutputParser): Promise<void> {
-        const makespan: number = plan['makespan'];
-        const metric: number = plan['metricValue'];
-        const searchPerformanceInfo = plan['searchPerformanceInfo'];
-        const statesEvaluated: number = searchPerformanceInfo['statesEvaluated'];
-        const elapsedTimeInSeconds = parseFloat(searchPerformanceInfo['timeElapsed']) / 1000;
-        const planTimeUnit = plan['timeUnit'];
+    async parsePlan(plan: AsyncResponsePlan, planParser: parser.PddlPlannerOutputParser): Promise<void> {
+        const makespan = plan.makespan;
+        const metric = plan.metricValue;
+        const searchPerformanceInfo = plan.searchPerformanceInfo;
+        const statesEvaluated = searchPerformanceInfo.statesEvaluated;
+        const elapsedTimeInSeconds = parseFloat(searchPerformanceInfo.timeElapsed) / 1000;
+        const planTimeUnit = plan.timeUnit;
         planTimeUnit && console.log("Plan time unit: " + planTimeUnit);
         const planTimeScale = (planTimeUnit && PlannerAsyncService.toPlanTimeScale(planTimeUnit)) ?? this.planTimeScale;
 
         planParser.setPlanMetaData(makespan, metric, statesEvaluated, elapsedTimeInSeconds, planTimeScale);
 
-        const planFormat: string | undefined = plan['format'];
+        const planFormat = plan.format;
         if (planFormat?.toLowerCase() === 'json') {
-            const planSteps = JSON.parse(plan['content']);
+            const planSteps = JSON.parse(plan.content);
             this.parsePlanSteps(planSteps, planParser);
             planParser.onPlanFinished();
         }
         else if (planFormat?.toLowerCase() === 'tasks') {
-            const planText = plan['content'];
+            const planText = plan.content;
             planParser.appendLine(planText);
             planParser.onPlanFinished();
         }
         else if (planFormat?.toLowerCase() === 'xplan') {
-            const planText = plan['content'];
+            const planText = plan.content;
             await planParser.appendXplan(planText); // must await the underlying async xml parsing
         }
         else {
@@ -194,9 +190,55 @@ export class PlannerAsyncService extends PlannerService {
 
 export interface AsyncServiceOnlyConfiguration {
     planFormat: string;
-    planTimeUnit?: string;
+    planTimeUnit?: PlanTimeUnit;
     timeout?: number;
 }
 
 export interface AsyncServiceConfiguration extends planner.PlannerRunConfiguration, AsyncServiceOnlyConfiguration {
 }
+
+/** Async service request body. */
+interface AsyncServerRequest extends ServerRequest {
+    domain: AsyncServerRequestFile;
+    problem: AsyncServerRequestFile;
+    configuration?: AsyncServiceConfiguration;
+    callbacks?: AsyncServiceCallback[];
+}
+
+interface AsyncServerRequestFile {
+    name: string;
+    format: 'PDDL';
+    content: string;
+}
+
+interface AsyncServiceCallback {
+    type: 'STATES' | 'PLAN' | 'STATES';
+    url: string;
+    token: string;
+}
+
+/** Async service response body. */
+interface AsyncServerResponse extends ServerResponse {
+    status: {
+        status: "NOT_INITIALIZED" | "INITIATING" | "SEARCHING_INITIAL_PLAN" | "STOPPED" | "SEARCHING_BETTER_PLAN" | "FAILED";
+        error: {
+            message: string;
+        }
+        reason: "TIMEOUT";
+    };
+    plans: AsyncResponsePlan[];
+}
+
+interface AsyncResponsePlan {
+    makespan: number;
+    metricValue: number;
+    searchPerformanceInfo: {
+        statesEvaluated: number;
+        timeElapsed: string; // really a string?
+    }
+    timeUnit: PlanTimeUnit;
+    format?: string;
+    content: string;
+}
+
+type PlanTimeUnit = "MINUTE" | "MILLISECOND" | "HOUR" | "DAY" | "WEEK" | "SECOND";

@@ -9,20 +9,18 @@ import { planner, Plan, ProblemInfo, DomainInfo, parser, PlanStep } from 'pddl-w
 
 
 /** Abstract implementation of both sync/async planning service client. */
-export abstract class PlannerService extends planner.Planner {
+export abstract class PlannerService<I extends ServerRequest, O extends ServerResponse> extends planner.Planner {
 
     constructor(plannerUrl: string, plannerConfiguration: planner.PlannerRunConfiguration, providerConfiguration: planner.ProviderConfiguration) {
         super(plannerUrl, plannerConfiguration, providerConfiguration);
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    abstract createRequestBody(domainFileInfo: DomainInfo, problemFileInfo: ProblemInfo): Promise<any>;
+    abstract createRequestBody(domainFileInfo: DomainInfo, problemFileInfo: ProblemInfo): Promise<I | null>;
 
     abstract createUrl(): string;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    abstract processServerResponseBody(responseBody: any, planParser: parser.PddlPlannerOutputParser, parent: planner.PlannerResponseHandler,
-        resolve: (plans: Plan[]) => void, reject: (error: Error) => void): void;
+    abstract processServerResponseBody(origUrl: string, responseBody: O, planParser: parser.PddlPlannerOutputParser, parent: planner.PlannerResponseHandler,
+        resolve: (plans: Plan[]) => void, reject: (error: Error) => void): Promise<void>;
 
     async plan(domainFileInfo: DomainInfo, problemFileInfo: ProblemInfo, planParser: parser.PddlPlannerOutputParser, parent: planner.PlannerResponseHandler): Promise<Plan[]> {
         parent.handleOutput(`Planning service: ${this.plannerPath}\nDomain: ${domainFileInfo.name}, Problem: ${problemFileInfo.name}\n`);
@@ -48,7 +46,7 @@ export abstract class PlannerService extends planner.Planner {
         const that = this;
         return new Promise<Plan[]>(function (resolve, reject) {
 
-            request.post({ url: url, headers: requestHeader, body: requestBody, json: true, timeout: timeoutInSec * 1000 * 1.1 }, (err, httpResponse, responseBody) => {
+            request.post({ url: url, headers: requestHeader, body: requestBody, json: true, timeout: timeoutInSec * 1000 * 1.1 }, async (err, httpResponse, responseBody) => {
 
                 if (err !== null) {
                     reject(err);
@@ -79,7 +77,7 @@ export abstract class PlannerService extends planner.Planner {
                     return;
                 }
 
-                that.processServerResponseBody(responseBody, planParser, parent, resolve, reject);
+                await that.processServerResponseBody(url, responseBody, planParser, parent, resolve, reject);
             });
         });
     }
@@ -124,4 +122,14 @@ export function instanceOfHttpConnectionError(object: any): object is HttpConnec
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function instanceOfHttpConnectionRefusedError(object: any): object is HttpConnectionRefusedError {
     return (instanceOfHttpConnectionError(object)) && (object as HttpConnectionError).code === 'ECONNREFUSED';
+}
+
+/** Server request body. */
+export interface ServerRequest {
+
+}
+
+/** Server response body. */
+export interface ServerResponse {
+
 }
