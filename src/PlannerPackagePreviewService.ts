@@ -6,9 +6,11 @@
 
 import { Plan, ProblemInfo, DomainInfo, parser, planner } from 'pddl-workspace';
 import { PlannerService, ServerRequest, ServerResponse } from './PlannerService';
+import { URL } from "url";
+import { getJson } from './httpUtils';
 
-/** Wraps the `/solve` planning web service interface. */
-export class PlannerSyncService extends PlannerService<SyncServerRequest, SyncServerResponse> {
+/** Wraps the `/package/xyz/solve` planning-as-a-service web service interface. */
+export class PlannerPackagePreviewService extends PlannerService<PackagedServerRequest, PackagedServerResponse> {
 
     constructor(plannerUrl: string, plannerConfiguration: planner.PlannerRunConfiguration, providerConfiguration: planner.ProviderConfiguration) {
         super(plannerUrl, plannerConfiguration, providerConfiguration);
@@ -27,8 +29,8 @@ export class PlannerSyncService extends PlannerService<SyncServerRequest, SyncSe
         return 60;
     }
 
-    createRequestBody(domainFileInfo: DomainInfo, problemFileInfo: ProblemInfo): Promise<SyncServerRequest | null> {
-        const body: SyncServerRequest = {
+    createRequestBody(domainFileInfo: DomainInfo, problemFileInfo: ProblemInfo): Promise<PackagedServerRequest | null> {
+        const body: PackagedServerRequest = {
             domain: domainFileInfo.getText(),
             problem: problemFileInfo.getText()
         };
@@ -36,22 +38,37 @@ export class PlannerSyncService extends PlannerService<SyncServerRequest, SyncSe
         return Promise.resolve(body);
     }
 
-    async processServerResponseBody(_origUrl: string, responseBody: SyncServerResponse, planParser: parser.PddlPlannerOutputParser, callbacks: planner.PlannerResponseHandler,
+    async processServerResponseBody(origUrl: string, responseBody: PackagedServerResponse, planParser: parser.PddlPlannerOutputParser, callbacks: planner.PlannerResponseHandler,
         resolve: (plans: Plan[]) => void, reject: (error: Error) => void): Promise<void> {
 
         const status = responseBody.status;
         const result = responseBody.result;
 
-        if (result) {
-            const res = result as SyncServerResponseResult;
+        if (result && isInstanceOfSyncServerResponseResult(result)) {
+            const res = result as PackageServerResponseResult;
             !isEmpty(res.output) && callbacks.handleOutput(res.output + '\n');
             res.stdout && callbacks.handleOutput(res.stdout + '\n');
             res.stderr && callbacks.handleOutput("Error: " + res.stderr + '\n');
         }
 
-        if (status === "error") {
+        if (status === "PENDING") {
+            await sleep(500);
+            await this.checkForResults(origUrl, planParser, callbacks, resolve, reject);
+        } else if (status === undefined) {
+            if (result !== undefined) {
+                const urlQuery = result;
+                if (typeof urlQuery === "string") {
+                    const resultUrl = new URL(urlQuery, origUrl).toString();
+                    await this.checkForResults(resultUrl, planParser, callbacks, resolve, reject);
+                } else {
+                    console.error("Element 'result should be a /check... url.");
+                }
+            } else {
+                console.error("Missing 'result' element.");
+            }
+        } else if (status === "error") {
             if (result) {
-                const res = result as SyncServerResponseResult
+                const res = result as PackageServerResponseResult
                 const resultOutput = res.output;
                 if (!isEmpty(resultOutput)) {
                     callbacks.handleOutput(resultOutput);
@@ -73,7 +90,7 @@ export class PlannerSyncService extends PlannerService<SyncServerRequest, SyncSe
             return;
         }
         else if (status === "ok" && result) {
-            const res = result as SyncServerResponseResult
+            const res = result as PackageServerResponseResult
 
             const resultOutput = res.output;
             if (!isEmpty(resultOutput)) {
@@ -95,22 +112,43 @@ export class PlannerSyncService extends PlannerService<SyncServerRequest, SyncSe
             resolve(plans);
         }
     }
+
+    async checkForResults(origUrl: string, planParser: parser.PddlPlannerOutputParser, callbacks: planner.PlannerResponseHandler,
+        resolve: (plans: Plan[]) => void, reject: (error: Error) => void): Promise<void> {
+        console.log(`Checking for results at ${origUrl} ...`);
+        const response = await getJson<PackagedServerResponse>(new URL(origUrl))
+        await this.processServerResponseBody(origUrl, response, planParser, callbacks, resolve, reject);
+    }
 }
 
 
-/** Sync service request body. */
-interface SyncServerRequest extends ServerRequest {
+function sleep(ms: number): Promise<void> {
+    return new Promise(resolve => {
+        setTimeout(resolve, ms);
+    });
+}
+
+
+/** Planner package service request body. */
+interface PackagedServerRequest extends ServerRequest {
     domain: string;
     problem: string;
 }
 
-/** Sync service response body. */
-interface SyncServerResponse extends ServerResponse {
-    status?: "error" | "ok";
-    result?: SyncServerResponseResult;
+/** Planner package service response body. */
+interface PackagedServerResponse extends ServerResponse {
+    status?: "PENDING" | "error" | "ok";
+    result?: CallbackUrl | PackageServerResponseResult;
 }
 
-interface SyncServerResponseResult {
+/** Used when the planning request was just submitted. */
+type CallbackUrl = string;
+
+function isInstanceOfSyncServerResponseResult(object: CallbackUrl | PackageServerResponseResult): boolean {
+    return !(typeof(object) === "string");
+}
+
+interface PackageServerResponseResult {
     output: string
     error: string;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
