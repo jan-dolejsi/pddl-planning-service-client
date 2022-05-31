@@ -26,7 +26,7 @@ export class PlannerPackagePreviewService extends PlannerService<PackagedServerR
     }
 
     getTimeout(): number {
-        return 60;
+        return 20;
     }
 
     createRequestBody(domainFileInfo: DomainInfo, problemFileInfo: ProblemInfo): Promise<PackagedServerRequest | null> {
@@ -38,8 +38,8 @@ export class PlannerPackagePreviewService extends PlannerService<PackagedServerR
         return Promise.resolve(body);
     }
 
-    async processServerResponseBody(origUrl: string, responseBody: PackagedServerResponse, planParser: parser.PddlPlannerOutputParser, callbacks: planner.PlannerResponseHandler,
-        resolve: (plans: Plan[]) => void, reject: (error: Error) => void): Promise<void> {
+    async processServerResponseBody(origUrl: string, responseBody: PackagedServerResponse, planParser: parser.PddlPlannerOutputParser,
+        callbacks: planner.PlannerResponseHandler): Promise<Plan[]> {
 
         const status = responseBody.status;
         const result = responseBody.result;
@@ -53,18 +53,18 @@ export class PlannerPackagePreviewService extends PlannerService<PackagedServerR
 
         if (status === "PENDING") {
             await sleep(500);
-            await this.checkForResults(origUrl, planParser, callbacks, resolve, reject);
+            return await this.checkForResults(origUrl, planParser, callbacks);
         } else if (status === undefined) {
             if (result !== undefined) {
                 const urlQuery = result;
                 if (typeof urlQuery === "string") {
                     const resultUrl = new URL(urlQuery, origUrl).toString();
-                    await this.checkForResults(resultUrl, planParser, callbacks, resolve, reject);
+                    return await this.checkForResults(resultUrl, planParser, callbacks);
                 } else {
-                    console.error("Element 'result should be a /check... url.");
+                    throw new Error("Element 'result should be a /check... url.");
                 }
             } else {
-                console.error("Missing 'result' element.");
+                throw new Error("Missing 'result' element.");
             }
         } else if (status === "error") {
             if (result) {
@@ -77,19 +77,15 @@ export class PlannerPackagePreviewService extends PlannerService<PackagedServerR
                 const resultError = res.error;
                 if (resultError) {
                     callbacks.handleOutput(resultError);
-                    resolve([]);
                 }
+                return [];
             }
             else {
-                reject(new Error("An error occurred while solving the planning problem: " + JSON.stringify(result)));
+                throw new Error("An error occurred while solving the planning problem: " + JSON.stringify(result));
             }
-            return;
-        }
-        else if (status !== "ok") {
-            reject(new Error(`Planner service failed with status ${status}.`));
-            return;
         }
         else if (status === "ok" && result) {
+            // this branch is here for backward compatibility with the /solve handling PlannerSyncService
             const res = result as PackageServerResponseResult
 
             const resultOutput = res.output;
@@ -98,7 +94,7 @@ export class PlannerPackagePreviewService extends PlannerService<PackagedServerR
             }
 
             if (res.plan) {
-                this.parsePlanSteps(res.plan, planParser);
+                this.convertPlanSteps(res.plan, planParser);
             }
 
             const plans = planParser.getPlans();
@@ -109,15 +105,16 @@ export class PlannerPackagePreviewService extends PlannerService<PackagedServerR
                 callbacks.handleOutput('No plan found.\n');
             }
 
-            resolve(plans);
+            return plans;
+        } else {
+            throw new Error(`Planner service failed with status ${status}.`);
         }
     }
 
-    async checkForResults(origUrl: string, planParser: parser.PddlPlannerOutputParser, callbacks: planner.PlannerResponseHandler,
-        resolve: (plans: Plan[]) => void, reject: (error: Error) => void): Promise<void> {
+    async checkForResults(origUrl: string, planParser: parser.PddlPlannerOutputParser, callbacks: planner.PlannerResponseHandler): Promise<Plan[]> {
         console.log(`Checking for results at ${origUrl} ...`);
         const response = await getJson<PackagedServerResponse>(new URL(origUrl))
-        await this.processServerResponseBody(origUrl, response, planParser, callbacks, resolve, reject);
+        return await this.processServerResponseBody(origUrl, response, planParser, callbacks);
     }
 }
 
@@ -145,7 +142,7 @@ interface PackagedServerResponse extends ServerResponse {
 type CallbackUrl = string;
 
 function isInstanceOfSyncServerResponseResult(object: CallbackUrl | PackageServerResponseResult): boolean {
-    return !(typeof(object) === "string");
+    return !(typeof (object) === "string");
 }
 
 interface PackageServerResponseResult {
