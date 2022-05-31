@@ -30,11 +30,11 @@ export class PlannerPackagePreviewService extends PlannerService<PackagedServerR
     }
 
     createRequestBody(domainFileInfo: DomainInfo, problemFileInfo: ProblemInfo): Promise<PackagedServerRequest | null> {
-        const body: PackagedServerRequest = {
+        let body: PackagedServerRequest = {
             domain: domainFileInfo.getText(),
             problem: problemFileInfo.getText()
         };
-
+        body = Object.assign(body, this.plannerConfiguration);
         return Promise.resolve(body);
     }
 
@@ -45,8 +45,8 @@ export class PlannerPackagePreviewService extends PlannerService<PackagedServerR
         const result = responseBody.result;
 
         if (result && isInstanceOfSyncServerResponseResult(result)) {
-            const res = result as PackageServerResponseResult;
-            !isEmpty(res.output) && callbacks.handleOutput(res.output + '\n');
+            const res = result as PackagedServerResponseResult;
+            !isEmpty(res.output) && typeof (res.output) === "string" && callbacks.handleOutput(res.output + '\n');
             res.stdout && callbacks.handleOutput(res.stdout + '\n');
             res.stderr && callbacks.handleOutput("Error: " + res.stderr + '\n');
         }
@@ -54,6 +54,21 @@ export class PlannerPackagePreviewService extends PlannerService<PackagedServerR
         if (status === "PENDING") {
             await sleep(500);
             return await this.checkForResults(origUrl, planParser, callbacks);
+        } else if (status === "error" || responseBody.Error) {
+            if (result) {
+                const res = result as PackagedServerResponseResult
+
+                const resultError = res.error;
+                if (resultError) {
+                    callbacks.handleOutput(resultError);
+                }
+                return [];
+            }
+            else if (responseBody.Error) {
+                throw new Error(responseBody.Error);
+            } else {
+                throw new Error("An error occurred while solving the planning problem: " + JSON.stringify(result));
+            }
         } else if (status === undefined) {
             if (result !== undefined) {
                 const urlQuery = result;
@@ -66,35 +81,16 @@ export class PlannerPackagePreviewService extends PlannerService<PackagedServerR
             } else {
                 throw new Error("Missing 'result' element.");
             }
-        } else if (status === "error") {
-            if (result) {
-                const res = result as PackageServerResponseResult
-                const resultOutput = res.output;
-                if (!isEmpty(resultOutput)) {
-                    callbacks.handleOutput(resultOutput);
-                }
-
-                const resultError = res.error;
-                if (resultError) {
-                    callbacks.handleOutput(resultError);
-                }
-                return [];
-            }
-            else {
-                throw new Error("An error occurred while solving the planning problem: " + JSON.stringify(result));
-            }
         }
         else if (status === "ok" && result) {
-            // this branch is here for backward compatibility with the /solve handling PlannerSyncService
-            const res = result as PackageServerResponseResult
+            const res = result as PackagedServerResponseResult
 
-            const resultOutput = res.output;
-            if (!isEmpty(resultOutput)) {
-                callbacks.handleOutput(resultOutput + '\n');
-            }
-
-            if (res.plan) {
-                this.convertPlanSteps(res.plan, planParser);
+            if (res.output) {
+                Object.keys(res.output).forEach(key => {
+                    const planText = res.output[key];
+                    planParser.appendBuffer(planText);
+                    planParser.onPlanFinished();
+                });
             }
 
             const plans = planParser.getPlans();
@@ -102,7 +98,8 @@ export class PlannerPackagePreviewService extends PlannerService<PackagedServerR
                 callbacks.handlePlan(plans[0]);
             }
             else {
-                callbacks.handleOutput('No plan found.\n');
+                callbacks.handleOutput(`Planner output: ${JSON.stringify(res.output)}`);
+                callbacks.handleOutput('No plan found in the planner output.\n');
             }
 
             return plans;
@@ -125,6 +122,7 @@ function sleep(ms: number): Promise<void> {
     });
 }
 
+export type PackagedServerRequestArgs = { [key: string]: number | string | boolean };
 
 /** Planner package service request body. */
 interface PackagedServerRequest extends ServerRequest {
@@ -135,21 +133,28 @@ interface PackagedServerRequest extends ServerRequest {
 /** Planner package service response body. */
 interface PackagedServerResponse extends ServerResponse {
     status?: "PENDING" | "error" | "ok";
-    result?: CallbackUrl | PackageServerResponseResult;
+    result?: CallbackUrl | PackagedServerResponseResult;
+
+    /** @deprecated but populated by the forbid iterative topk planner, when it is missing a mandatory argument*/
+    Error: string;
 }
 
 /** Used when the planning request was just submitted. */
 type CallbackUrl = string;
 
-function isInstanceOfSyncServerResponseResult(object: CallbackUrl | PackageServerResponseResult): boolean {
+function isInstanceOfSyncServerResponseResult(object: CallbackUrl | PackagedServerResponseResult): boolean {
     return !(typeof (object) === "string");
 }
 
-interface PackageServerResponseResult {
-    output: string
+type PackagedServerResponseResultOutput = { [key: string]: string }; /*{
+    plan?: string; // many planners populate this
+    sas_plan?: string; // lama-first populates the following one for some reason
+    // sas_plan.1: string// but!! forbid iterative topk populates sas_plan.N
+};*/
+
+interface PackagedServerResponseResult {
+    output: PackagedServerResponseResultOutput;
     error: string;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    plan?: any;
     stderr?: string;
     stdout?: string;
 }
