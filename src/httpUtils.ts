@@ -4,9 +4,19 @@
  * ------------------------------------------------------------------------------------------ */
 'use strict';
 
-import { get, request } from 'http';
-import { RequestOptions } from 'https';
+import * as http from 'http';
+import * as https from 'https';
 import { URL } from 'url';
+
+const HTTPS = "https:";
+
+function get(url: URL, callback?: ((res: http.IncomingMessage) => void) | undefined): http.ClientRequest {
+    return url.protocol === HTTPS ? https.get(url, callback) : http.get(url, callback);
+}
+
+function request(url: URL, options: http.RequestOptions, callback?: (res: http.IncomingMessage) => void): http.ClientRequest {
+    return url.protocol === HTTPS ? https.request(url, options, callback) : http.request(url, options, callback);
+}
 
 export async function getJson<T>(url: URL): Promise<T> {
     return await new Promise((resolve, reject) => {
@@ -40,7 +50,7 @@ export async function getJson<T>(url: URL): Promise<T> {
     });
 }
 
-export interface PostOptions extends RequestOptions {
+export interface PostOptions extends https.RequestOptions {
     /** Response body should be parsed as JSON input. */
     json?: boolean;
     /** Response body should be read using given encoding. */
