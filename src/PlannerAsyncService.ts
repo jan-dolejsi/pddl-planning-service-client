@@ -100,6 +100,9 @@ export class PlannerAsyncService extends PlannerService<AsyncServerRequest, Asyn
     async processServerResponseBody(_origUrl: string, responseBody: AsyncServerResponse, planParser: parser.PddlPlannerOutputParser,
         callbacks: planner.PlannerResponseHandler): Promise<Plan[]> {
 
+        // todo: the output returned may be cumulative, print only the new part
+        callbacks.handleOutput(responseBody.output);
+        
         const responseStatus = responseBody.status.status;
         if (["STOPPED", "SEARCHING_BETTER_PLAN"].includes(responseStatus)) {
             if (responseBody.status.reason === "TIMEOUT") {
@@ -218,6 +221,7 @@ interface AsyncServerResponse extends ServerResponse {
         reason: "TIMEOUT";
     };
     plans: AsyncResponsePlan[];
+    output: string;
 }
 
 interface AsyncResponsePlan {
