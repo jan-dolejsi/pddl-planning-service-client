@@ -78,8 +78,27 @@ export class PlannerPackagePreviewService extends PlannerService<PackagedServerR
                 } else {
                     throw new Error("Element 'result should be a /check... url.");
                 }
+            } else if (Object.keys(responseBody).some(key => key.includes('plan'))) {
+                const responseBody1 = responseBody as never as PlanUtilsServerResponseBody;
+                responseBody1.stdout && callbacks.handleOutput(responseBody1.stdout + '\n');
+                responseBody1.stderr && callbacks.handleOutput("Error: " + responseBody1.stderr + '\n');
+                Object.keys(responseBody)
+                    .filter(key => key.includes('plan'))
+                    .forEach(key => {
+                        const planText = responseBody1[key];
+                        planParser.appendBuffer(planText);
+                        planParser.onPlanFinished();
+                    });
+
+                const plans = planParser.getPlans();
+                if (plans.length > 0) {
+                    callbacks.handlePlan(plans[0]);
+                } else {
+                    callbacks.handleOutput('No plan found in the planner output.\n');
+                }
+                return plans;
             } else {
-                throw new Error("Missing 'result' element.");
+                throw new Error("Missing 'result' or '*plan*' elements.");
             }
         }
         else if (status === "ok" && result) {
@@ -157,6 +176,12 @@ interface PackagedServerResponseResult {
     error: string;
     stderr?: string;
     stdout?: string;
+}
+
+interface PlanUtilsServerResponseBody {
+    stderr: string;
+    stdout: string;
+    [key: string]: string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

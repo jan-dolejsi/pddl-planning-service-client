@@ -10,5 +10,6 @@
 		}
 	},
 	"mocha.files.glob": "out/test/**/*Test.js",
-	"WhiteSource Advise.Diff.BaseBranch": "main"
+	"WhiteSource Advise.Diff.BaseBranch": "main",
+	"task.allowAutomaticTasks": "on"
 }
