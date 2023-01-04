@@ -67,10 +67,9 @@ export function postJsonAsString(url: URL, requestBody: never, options: PostOpti
 
 export async function postJson<T>(url: URL, requestBody: never, options: PostOptions): Promise<T> {
     const requestData = JSON.stringify(requestBody);
-    options.headers = Object.assign(options.headers, {
-        'Content-Type': 'application/json',
-        'Content-Length': requestData.length,
-    });
+    options.headers = options.headers ?? {};
+    options.headers['Content-Type'] = 'application/json';
+    options.headers['Content-Length'] = requestData.length;
 
     return await new Promise((resolve, reject) => {
         const from = options.serviceFriendlyName ?? url;
