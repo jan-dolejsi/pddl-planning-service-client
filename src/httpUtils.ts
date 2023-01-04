@@ -103,7 +103,7 @@ export async function postJson<T>(url: URL, requestBody: never, options: PostOpt
             res.on('error', error => {
                 reject(error);
             });
-            res.setEncoding(options.encoding ?? 'utf8');
+            res.setEncoding((options.encoding as BufferEncoding) ?? 'utf8');
             let rawData = '';
             res.on('data', (chunk) => { rawData += chunk; });
             res.on('end', () => {
