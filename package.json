@@ -1,6 +1,6 @@
 {
   "name": "pddl-planning-service-client",
-  "version": "2.2.2",
+  "version": "2.2.3",
   "description": "PDDL Planning Service clients",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

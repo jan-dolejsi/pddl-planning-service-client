@@ -98,6 +98,9 @@ export class PlannerPackagePreviewService extends PlannerService<PackagedServerR
                 }
                 return plans;
             } else {
+                const responseBody1 = responseBody as never as PlanUtilsServerResponseBody;
+                responseBody1.stdout && callbacks.handleOutput(responseBody1.stdout + '\n');
+                responseBody1.stderr && callbacks.handleOutput("Error: " + responseBody1.stderr + '\n');
                 throw new Error("Missing 'result' or '*plan*' elements.");
             }
         }
