@@ -45,7 +45,7 @@
   "dependencies": {
     "parse-xsd-duration": "^0.5.0",
     "pddl-workspace": "^8.0.0",
-    "vscode-uri": "^3.0.3",
+    "vscode-uri": "^3.0.7",
     "xml2js": "^0.4.23"
   }
 }
