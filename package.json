@@ -1,10 +1,9 @@
 {
   "name": "pddl-planning-service-client",
-  "version": "3.0.1",
+  "version": "4.0.0",
   "description": "PDDL Planning Service clients",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "type": "module",
   "scripts": {
     "test": "mocha -- out/test/**/*Test.js",
     "pretest": "eslint ./src/**/*.ts && npm run compile",
