@@ -11,4 +11,4 @@ Install this package using `npm install pddl-workspace`.
 
 ## Compiling and contributing
 
-Install node.js 12.14.1.
+Install node.js 18.16.
