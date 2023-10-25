@@ -43,21 +43,19 @@ export class PlannerSyncService extends PlannerService<SyncServerRequest, SyncSe
         const result = responseBody.result;
 
         if (result) {
-            const res = result as SyncServerResponseResult;
-            !isEmpty(res.output) && callbacks.handleOutput(res.output + '\n');
-            res.stdout && callbacks.handleOutput(res.stdout + '\n');
-            res.stderr && callbacks.handleOutput("Error: " + res.stderr + '\n');
+            !isEmpty(result.output) && callbacks.handleOutput(result.output + '\n');
+            result.stdout && callbacks.handleOutput(result.stdout + '\n');
+            result.stderr && callbacks.handleOutput("Error: " + result.stderr + '\n');
         }
 
         if (status === "error") {
             if (result) {
-                const res = result as SyncServerResponseResult
-                const resultOutput = res.output;
+                const resultOutput = result.output;
                 if (!isEmpty(resultOutput)) {
                     callbacks.handleOutput(resultOutput);
                 }
 
-                const resultError = res.error;
+                const resultError = result.error;
                 if (resultError) {
                     callbacks.handleOutput(resultError);
                 }
@@ -68,15 +66,14 @@ export class PlannerSyncService extends PlannerService<SyncServerRequest, SyncSe
             }
         }
         else if (status === "ok" && result) {
-            const res = result as SyncServerResponseResult
 
-            const resultOutput = res.output;
+            const resultOutput = result.output;
             if (!isEmpty(resultOutput)) {
                 callbacks.handleOutput(resultOutput + '\n');
             }
 
-            if (res.plan) {
-                this.convertPlanSteps(res.plan, planParser);
+            if (result.plan) {
+                this.convertPlanSteps(result.plan, planParser);
             }
 
             const plans = planParser.getPlans();
