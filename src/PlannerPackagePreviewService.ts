@@ -165,7 +165,7 @@ interface PackagedServerResponse extends ServerResponse {
 type CallbackUrl = string;
 
 function isInstanceOfSyncServerResponseResult(object: CallbackUrl | PackagedServerResponseResult): boolean {
-    return !(typeof (object) === "string");
+    return typeof (object) !== "string";
 }
 
 type PackagedServerResponseResultOutput = { [key: string]: string }; /*{
