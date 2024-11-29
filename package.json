@@ -1,6 +1,6 @@
 {
   "name": "pddl-planning-service-client",
-  "version": "5.1.0",
+  "version": "5.1.1",
   "description": "PDDL Planning Service clients",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -43,7 +43,7 @@
   },
   "dependencies": {
     "parse-xsd-duration": "^0.5.0",
-    "pddl-workspace": "^11.2.0",
+    "pddl-workspace": "^11.3.0",
     "vscode-uri": "^3.0.8",
     "xml2js": "^0.6.2"
   }
